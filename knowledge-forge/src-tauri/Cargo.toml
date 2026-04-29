@@ -20,6 +20,9 @@ chrono = "0.4.44"
 futures-util = "0.3.32"
 thiserror = "2.0.18"
 tauri-plugin-updater = "2.10.1"
+tauri-plugin-dialog = "2.7.0"
+docx-rs = "0.4.20"
+zip = "8.6.0"
 
 [features]
 default = [ "custom-protocol" ]

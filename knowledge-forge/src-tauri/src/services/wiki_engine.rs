@@ -34,11 +34,17 @@ pub fn ensure_wiki_dirs(app_dir: &Path) -> Result<(), String> {
 }
 
 pub fn append_to_log(app_dir: &Path, action: &str, description: &str) -> Result<(), String> {
-    let log_path = app_dir.join("wiki").join("LOG.md");
+    let wiki_dir = app_dir.join("wiki");
+    fs::create_dir_all(&wiki_dir).map_err(|e| e.to_string())?;
+    let log_path = wiki_dir.join("LOG.md");
     let now = Local::now().format("%Y-%m-%d %H:%M").to_string();
     let log_entry = format!("\n## [{}] {} | {}\n", now, action, description);
     
-    let mut file = fs::OpenOptions::new().append(true).open(&log_path).map_err(|e| e.to_string())?;
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+        .map_err(|e| e.to_string())?;
     file.write_all(log_entry.as_bytes()).map_err(|e| e.to_string())?;
     Ok(())
 }

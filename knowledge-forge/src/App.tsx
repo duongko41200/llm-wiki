@@ -7,18 +7,22 @@ import { WikiIndex } from "./components/wiki/WikiIndex";
 import { ThemeProvider, useTheme } from "./contexts/ThemeContext";
 import { OnboardingWizard } from "./components/onboarding/OnboardingWizard";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
+import { OllamaSetup } from "./components/setup/OllamaSetup";
 
 const AppContent = () => {
   const { theme, toggleTheme } = useTheme();
   const [ollamaStatus, setOllamaStatus] = useState<string>("Checking...");
+  const [ollamaReady, setOllamaReady] = useState(false);
 
   useEffect(() => {
     const checkOllama = async () => {
       try {
         const isOk = await invoke<boolean>("check_ollama");
         setOllamaStatus(isOk ? "Online" : "Offline / Not Found");
+        setOllamaReady(isOk);
       } catch (err) {
         setOllamaStatus("Error connecting");
+        setOllamaReady(false);
       }
     };
     checkOllama();
@@ -180,7 +184,17 @@ const AppContent = () => {
         <p>Phase 3: Knowledge Building — Ingest.</p>
 
         <div style={{ marginTop: "2rem", height: "calc(100vh - 150px)" }}>
-          {activeTab === "documents" && <UploadDropzone />}
+          {activeTab === "documents" && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+              {!ollamaReady && (
+                <OllamaSetup onReady={() => {
+                  setOllamaReady(true);
+                  setOllamaStatus("Online");
+                }} />
+              )}
+              {ollamaReady && <UploadDropzone />}
+            </div>
+          )}
           {activeTab === "wiki" && <WikiIndex />}
           {activeTab === "chat" && <ChatPanel />}
         </div>

@@ -39,10 +39,15 @@ fn main() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(SqlBuilder::default().add_migrations("sqlite:knowledge_forge.db", migrations).build())
         .invoke_handler(tauri::generate_handler![
             commands::check_ollama,
+            commands::check_ollama_installed,
+            commands::install_ollama,
+            commands::start_ollama_serve,
+            commands::pull_ollama_model,
             commands::get_settings,
             commands::parse_document,
             commands::ingest_document,

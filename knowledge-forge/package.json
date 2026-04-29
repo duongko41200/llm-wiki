@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:clean": "npx kill-port 1420 && npm run tauri dev",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
@@ -12,6 +13,8 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^2.10.1",
+    "@tauri-apps/plugin-dialog": "^2.7.0",
+    "@tauri-apps/plugin-shell": "^2.3.5",
     "@tauri-apps/plugin-sql": "^2.4.0",
     "@tauri-apps/plugin-updater": "^2.10.1",
     "lucide-react": "^0.300.0",

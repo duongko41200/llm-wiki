@@ -56,7 +56,7 @@ pub async fn chat_stream(messages: Vec<OllamaChatMessage>, window: &tauri::Windo
     let client = Client::new();
     
     let req_body = OllamaChatRequest {
-        model: "llama3.1:8b".to_string(), // Better model for chat
+        model: "qwen2.5:3b".to_string(), // Use the downloaded model
         messages,
         stream: true,
         format: None,
@@ -128,7 +128,7 @@ TÀI LIỆU:
     );
 
     let req_body = OllamaGenerateRequest {
-        model: "qwen2.5:7b".to_string(), // 7B is better for structured generation
+        model: "qwen2.5:3b".to_string(), // Use the downloaded model
         prompt,
         stream: false,
         format: Some("json".to_string()),
