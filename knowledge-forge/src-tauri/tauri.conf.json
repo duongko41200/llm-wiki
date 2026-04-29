@@ -1,0 +1,35 @@
+{
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "identifier": "com.knowledgeforge.app",
+    "version": "0.1.0",
+    "windows": [
+      {
+        "title": "KnowledgeForge",
+        "width": 1200,
+        "height": 800,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' http://127.0.0.1:11434 http://localhost:11434; img-src 'self' data: blob:; object-src 'none'",
+      "freezePrototype": true
+    }
+  },
+  "bundle": {
+    "externalBin": ["binaries/parser"]
+  },
+  "plugins": {
+    "sql": {
+      "preload": [
+        "sqlite:knowledge_forge.db"
+      ]
+    }
+  }
+}
