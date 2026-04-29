@@ -1,4 +1,6 @@
+use tauri::Manager;
 use reqwest::Client;
+use crate::services::{ingest_engine, wiki_engine, chat_engine};
 
 #[tauri::command]
 pub async fn check_ollama() -> Result<bool, String> {
@@ -35,6 +37,36 @@ pub async fn parse_document(app: tauri::AppHandle, input_path: String, file_type
     } else {
         Err(String::from_utf8(output.stderr).unwrap_or_default())
     }
+}
+
+#[tauri::command]
+pub async fn ingest_document(app: tauri::AppHandle, document_id: String, raw_path: String) -> Result<crate::models::IngestResult, String> {
+    let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    ingest_engine::run_ingest_pipeline(&app_dir, &document_id, &raw_path).await
+}
+
+#[tauri::command]
+pub async fn get_wiki_index(app: tauri::AppHandle) -> Result<String, String> {
+    let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    wiki_engine::read_index(&app_dir)
+}
+
+#[tauri::command]
+pub async fn send_chat_message(
+    app: tauri::AppHandle, 
+    window: tauri::Window, 
+    message: String, 
+    mode: String, 
+    context_ids: Vec<String>
+) -> Result<(), String> {
+    let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    chat_engine::handle_chat_query(&app_dir, message, mode, context_ids, &window).await
+}
+
+#[tauri::command]
+pub async fn generate_quiz(app: tauri::AppHandle, document_id: String) -> Result<String, String> {
+    let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    chat_engine::handle_generate_quiz(&app_dir, document_id).await
 }
 
 #[cfg(test)]

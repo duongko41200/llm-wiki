@@ -1,10 +1,13 @@
 import React, { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { UploadCloud } from 'lucide-react';
+import { UploadCloud, Bot } from 'lucide-react';
+import { useIngest } from '../../hooks/useIngest';
 
 export const UploadDropzone = () => {
   const [parsing, setParsing] = useState(false);
   const [result, setResult] = useState<string | null>(null);
+  const [parsedPath, setParsedPath] = useState<string | null>(null);
+  const { startIngest, isIngesting, error: ingestError, result: ingestResult } = useIngest();
 
   const handleUploadClick = async () => {
     // In a real app, use @tauri-apps/plugin-dialog to open a file dialog
@@ -20,6 +23,7 @@ export const UploadDropzone = () => {
 
     setParsing(true);
     setResult(null);
+    setParsedPath(null);
     try {
         const out = await invoke<string>("parse_document", { 
             inputPath: filePath, 
@@ -27,11 +31,21 @@ export const UploadDropzone = () => {
             outputPath 
         });
         setResult(`Success: ${out}`);
+        setParsedPath(outputPath);
     } catch (e) {
         setResult(`Error: ${e}`);
     } finally {
         setParsing(false);
     }
+  };
+
+  const handleIngestClick = async (e: React.MouseEvent) => {
+    e.stopPropagation(); // prevent triggering upload again
+    if (!parsedPath) return;
+    
+    // Using a placeholder document ID for testing
+    const docId = "doc_" + Math.floor(Math.random() * 10000);
+    await startIngest(docId, parsedPath);
   };
 
   return (
@@ -51,6 +65,34 @@ export const UploadDropzone = () => {
         
         {parsing && <div style={{ marginTop: '1rem', color: 'lightblue' }}>Parsing document... Please wait.</div>}
         {result && <div style={{ marginTop: '1rem', fontSize: '0.9rem', color: result.startsWith("Error") ? 'coral' : 'lightgreen' }}>{result}</div>}
+        
+        {parsedPath && (
+            <div style={{ marginTop: '2rem', padding: '1rem', borderTop: '1px solid var(--border-color)' }}>
+                <h4>Document ready for ingestion</h4>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{parsedPath}</p>
+                <button 
+                    onClick={handleIngestClick}
+                    disabled={isIngesting}
+                    style={{
+                        marginTop: '1rem',
+                        padding: '0.5rem 1rem',
+                        backgroundColor: isIngesting ? 'gray' : 'var(--primary-color)',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: isIngesting ? 'not-allowed' : 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        margin: '1rem auto 0 auto'
+                    }}
+                >
+                    <Bot size={18} /> {isIngesting ? 'Ingesting...' : 'Start Knowledge Ingestion'}
+                </button>
+                {ingestError && <div style={{ marginTop: '1rem', color: 'coral', fontSize: '0.9rem' }}>Ingest Error: {ingestError}</div>}
+                {ingestResult && <div style={{ marginTop: '1rem', color: 'lightgreen', fontSize: '0.9rem' }}>Ingest Success! View Wiki tab.</div>}
+            </div>
+        )}
     </div>
   );
 };

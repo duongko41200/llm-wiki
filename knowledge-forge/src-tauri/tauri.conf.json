@@ -5,9 +5,9 @@
     "devUrl": "http://localhost:1420",
     "frontendDist": "../dist"
   },
+  "identifier": "com.knowledgeforge.app",
+  "version": "0.1.0",
   "app": {
-    "identifier": "com.knowledgeforge.app",
-    "version": "0.1.0",
     "windows": [
       {
         "title": "KnowledgeForge",
@@ -22,14 +22,18 @@
       "freezePrototype": true
     }
   },
-  "bundle": {
-    "externalBin": ["binaries/parser"]
-  },
+  "bundle": {},
   "plugins": {
     "sql": {
       "preload": [
         "sqlite:knowledge_forge.db"
       ]
+    },
+    "updater": {
+      "endpoints": [
+        "https://github.com/YOUR_USERNAME/knowledge-forge/releases/latest/download/updater.json"
+      ],
+      "pubkey": "YOUR_UPDATER_PUBKEY"
     }
   }
 }

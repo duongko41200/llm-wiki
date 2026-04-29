@@ -6,24 +6,11 @@
     "main"
   ],
   "permissions": [
-    "core:event:default",
-    "core:window:default",
-    {
-      "identifier": "fs:read-files",
-      "allow": [
-        "$APPDATA/knowledge-forge/*",
-        "$DOCUMENT/*"
-      ]
-    },
-    {
-      "identifier": "fs:write-files",
-      "allow": [
-        "$APPDATA/knowledge-forge/*"
-      ]
-    },
-    {
-      "identifier": "shell:allow-execute",
-      "allow": [{ "name": "parser", "sidecar": true }]
-    }
+    "core:default",
+    "shell:default",
+    "shell:allow-execute",
+    "shell:allow-spawn",
+    "sql:default",
+    "updater:default"
   ]
 }

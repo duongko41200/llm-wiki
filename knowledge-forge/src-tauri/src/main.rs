@@ -2,6 +2,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod commands;
+mod models;
+mod services;
 
 use tauri_plugin_sql::{Builder as SqlBuilder, Migration, MigrationKind};
 
@@ -37,11 +39,16 @@ fn main() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(SqlBuilder::default().add_migrations("sqlite:knowledge_forge.db", migrations).build())
         .invoke_handler(tauri::generate_handler![
             commands::check_ollama,
             commands::get_settings,
-            commands::parse_document
+            commands::parse_document,
+            commands::ingest_document,
+            commands::get_wiki_index,
+            commands::send_chat_message,
+            commands::generate_quiz
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

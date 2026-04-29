@@ -318,17 +318,17 @@ CREATE INDEX idx_conversations_mode ON conversations(mode);
 
 **Mục tiêu:** Markdown → Wiki pages (theo LLM-Wiki pattern)
 
-- [ ] `ollama_client.rs`: POST `/api/generate` với structured prompts
-- [ ] `ingest_engine.rs`: orchestrate pipeline
+- [x] `ollama_client.rs`: POST `/api/generate` với structured prompts
+- [x] `ingest_engine.rs`: orchestrate pipeline
   1. Đọc raw markdown
   2. Gửi prompt "Extract entities, concepts, summary" → Ollama
   3. Parse JSON response
   4. Tạo file wiki/sources/, wiki/entities/, wiki/concepts/
   5. Cập nhật INDEX.md, LOG.md
   6. Update document status → 'ready'
-- [ ] IPC: `ingest_document`, `ingest_all_pending`
-- [ ] React: Ingest progress UI, wiki index viewer
-- [ ] `wiki_engine.rs`: read/search markdown files
+- [x] IPC: `ingest_document`, `ingest_all_pending`
+- [x] React: Ingest progress UI, wiki index viewer
+- [x] `wiki_engine.rs`: read/search markdown files
 
 **Deliverable:** Upload → auto-build wiki → browse wiki pages
 
@@ -336,17 +336,17 @@ CREATE INDEX idx_conversations_mode ON conversations(mode);
 
 **Mục tiêu:** Chat dựa trên wiki, so sánh, quiz
 
-- [ ] Chat logic trong `commands/chat.rs`:
+- [x] Chat logic trong `commands/chat.rs`:
   1. Nhận message + mode (general/document/compare/quiz)
   2. Tìm wiki pages liên quan (search INDEX.md + full-text)
   3. Build system prompt với wiki context
   4. POST Ollama `/api/chat` (streaming)
   5. Save message to DB
-- [ ] Streaming response: Tauri events → React
-- [ ] Compare mode: load 2 docs' wiki pages → prompt "so sánh"
-- [ ] Quiz mode: prompt "tạo N câu trắc nghiệm JSON" → render UI
-- [ ] React: `ChatPanel`, `MessageBubble`, `ChatInput`, `QuizCard`
-- [ ] Custom hook: `useChat()`
+- [x] Streaming response: Tauri events → React
+- [x] Compare mode: load 2 docs' wiki pages → prompt "so sánh"
+- [x] Quiz mode: prompt "tạo N câu trắc nghiệm JSON" → render UI
+- [x] React: `ChatPanel`, `MessageBubble`, `ChatInput`, `QuizCard`
+- [x] Custom hook: `useChat()`
 
 **Deliverable:** Chat trong context tài liệu, so sánh 2 docs, làm quiz
 
@@ -354,15 +354,15 @@ CREATE INDEX idx_conversations_mode ON conversations(mode);
 
 **Mục tiêu:** Production-ready, build installer
 
-- [ ] Auto-updater với signature verification
-- [ ] Error handling toàn diện (AppError enum)
-- [ ] Dark/Light theme
-- [ ] Keyboard shortcuts
-- [ ] Export wiki → single markdown / PDF
-- [ ] `npm run tauri build` → `.msi` (Windows), `.dmg` (Mac)
-- [ ] Onboarding wizard hoàn chỉnh
-- [ ] README + docs/ cho contributors
-- [ ] Security audit: `cargo audit`, CSP review
+- [x] Auto-updater với signature verification
+- [x] Error handling toàn diện (AppError enum)
+- [x] Dark/Light theme
+- [x] Keyboard shortcuts
+- [x] Export wiki → single markdown / PDF
+- [x] `npm run tauri build` → `.msi` (Windows), `.dmg` (Mac)
+- [x] Onboarding wizard hoàn chỉnh
+- [x] README + docs/ cho contributors
+- [x] Security audit: `cargo audit`, CSP review
 
 **Deliverable:** Installer file người khác tải về dùng được
 
