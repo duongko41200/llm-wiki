@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Bot, Key, CheckCircle, XCircle, Loader, ChevronDown } from 'lucide-react';
 import { useAppStore, LlmProviderType, OLLAMA_MODELS, GEMINI_MODELS } from '../../stores/appStore';
@@ -7,6 +7,15 @@ export const SettingsPanel: React.FC = () => {
   const { llmConfig, setLlmConfig } = useAppStore();
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle');
   const [testMessage, setTestMessage] = useState('');
+
+  // Auto-correct invalid models from old persisted state
+  useEffect(() => {
+    if (llmConfig.provider === 'gemini' && !GEMINI_MODELS.includes(llmConfig.model)) {
+      setLlmConfig({ model: GEMINI_MODELS[0] });
+    } else if (llmConfig.provider === 'ollama' && !OLLAMA_MODELS.includes(llmConfig.model)) {
+      setLlmConfig({ model: OLLAMA_MODELS[0] });
+    }
+  }, [llmConfig.provider, llmConfig.model, setLlmConfig]);
 
   const handleProviderChange = (provider: LlmProviderType) => {
     const defaultModel = provider === 'ollama' ? OLLAMA_MODELS[0] : GEMINI_MODELS[0];
