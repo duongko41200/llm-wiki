@@ -8,14 +8,21 @@ export type { ChatMode, ChatMessage };
 export function useChat() {
   const {
     chatMessages, chatIsLoading, chatMode, selectedContextIds,
+    llmConfig, useRag,
     addChatMessage, appendStreamChunk, finalizeStream, setChatMode, setChatLoading,
+    clearChat,
   } = useAppStore();
 
   const currentModeRef = useRef(chatMode);
   currentModeRef.current = chatMode;
-
   const currentContextRef = useRef(selectedContextIds);
   currentContextRef.current = selectedContextIds;
+  const llmConfigRef = useRef(llmConfig);
+  llmConfigRef.current = llmConfig;
+  const useRagRef = useRef(useRag);
+  useRagRef.current = useRag;
+  const messagesRef = useRef(chatMessages);
+  messagesRef.current = chatMessages;
 
   useEffect(() => {
     const unlistenChunk = listen<string>('chat_chunk', (event) => {
@@ -44,11 +51,21 @@ export function useChat() {
     addChatMessage(newMsg);
     setChatLoading(true);
 
+    // Build history: exclude current user message + streaming placeholder
+    // Keep last 6 messages only (3 back-and-forth) to reduce token count
+    const history = messagesRef.current
+      .filter(m => m.id !== 'streaming' && m.id !== newMsg.id)
+      .slice(-6)
+      .map(m => ({ role: m.role, content: m.content }));
+
     try {
       await invoke('send_chat_message', {
         message: content,
         mode: currentModeRef.current,
         contextIds: currentContextRef.current,
+        history,
+        useRag: useRagRef.current,
+        llmConfig: llmConfigRef.current,
       });
     } catch (error) {
       finalizeStream();
@@ -65,17 +82,19 @@ export function useChat() {
   const generateQuiz = async (documentId: string) => {
     if (!documentId) return;
     setChatLoading(true);
-    const msgId = Date.now().toString();
     addChatMessage({
-      id: msgId,
+      id: Date.now().toString(),
       role: 'user',
-      content: 'Hãy tạo bài quiz từ tài liệu này.',
+      content: '🎯 Hãy tạo bài quiz từ tài liệu này.',
       mode: 'quiz',
       createdAt: Date.now(),
     });
-    
+
     try {
-      const resultStr = await invoke<string>('generate_quiz', { documentId });
+      const resultStr = await invoke<string>('generate_quiz', {
+        documentId,
+        llmConfig: llmConfigRef.current,
+      });
       addChatMessage({
         id: (Date.now() + 1).toString(),
         role: 'assistant',
@@ -96,5 +115,13 @@ export function useChat() {
     }
   };
 
-  return { messages: chatMessages, isLoading: chatIsLoading, currentMode: chatMode, setCurrentMode: setChatMode, sendMessage, generateQuiz };
+  return {
+    messages: chatMessages,
+    isLoading: chatIsLoading,
+    currentMode: chatMode,
+    setCurrentMode: setChatMode,
+    sendMessage,
+    generateQuiz,
+    clearChat,
+  };
 }

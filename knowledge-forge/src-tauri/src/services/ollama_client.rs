@@ -1,5 +1,9 @@
 use reqwest::Client;
-use crate::models::{OllamaGenerateRequest, OllamaGenerateResponse, OllamaChatRequest, OllamaChatStreamResponse, OllamaChatMessage, QuizResponse, OllamaEmbedRequest, OllamaEmbedResponse};
+use crate::models::{
+    OllamaGenerateRequest, OllamaGenerateResponse,
+    OllamaChatRequest, OllamaChatStreamResponse, OllamaChatMessage,
+    QuizResponse, OllamaEmbedRequest, OllamaEmbedResponse,
+};
 use futures_util::StreamExt;
 use tauri::Emitter;
 
@@ -8,13 +12,12 @@ const OLLAMA_EMBED_URL: &str = "http://127.0.0.1:11434/api/embed";
 const OLLAMA_CHAT_URL: &str = "http://127.0.0.1:11434/api/chat";
 const OLLAMA_PULL_URL: &str = "http://127.0.0.1:11434/api/pull";
 
-const EMBED_MODEL: &str = "nomic-embed-text";
-const CHAT_MODEL: &str = "qwen2.5:3b";
+pub const EMBED_MODEL: &str = "nomic-embed-text";
+pub const DEFAULT_CHAT_MODEL: &str = "qwen2.5:3b";
 
 pub async fn ensure_embed_model(window: &tauri::Window) -> Result<(), String> {
     let client = Client::builder().timeout(std::time::Duration::from_secs(3)).build().unwrap_or_default();
     
-    // Check if model exists
     let res = client.post(OLLAMA_GENERATE_URL)
         .json(&OllamaGenerateRequest {
             model: EMBED_MODEL.to_string(),
@@ -30,7 +33,6 @@ pub async fn ensure_embed_model(window: &tauri::Window) -> Result<(), String> {
         }
     }
     
-    // Model not found, pull it
     let _ = window.emit("ingest_progress", serde_json::json!({
         "status": "Đang tải mô hình nhúng (nomic-embed-text)... (chỉ một lần duy nhất)",
         "percent": 10
@@ -83,14 +85,48 @@ pub async fn embed_texts(texts: Vec<String>) -> Result<Vec<Vec<f32>>, String> {
     Ok(ollama_response.embeddings)
 }
 
-pub async fn chat_stream(messages: Vec<OllamaChatMessage>, window: &tauri::Window) -> Result<(), String> {
+/// Non-streaming single generation — dùng cho Query Reformulation
+pub async fn generate_single(model: &str, prompt: &str) -> Result<String, String> {
+    let client = Client::builder()
+        .timeout(std::time::Duration::from_secs(60))
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
+
+    let req_body = OllamaGenerateRequest {
+        model: model.to_string(),
+        prompt: prompt.to_string(),
+        stream: false,
+        format: None,
+    };
+
+    let res = client
+        .post(OLLAMA_GENERATE_URL)
+        .json(&req_body)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to send generate request: {}", e))?;
+
+    if !res.status().is_success() {
+        return Err(format!("Ollama generate returned status: {}", res.status()));
+    }
+
+    let response: OllamaGenerateResponse = res
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse generate response: {}", e))?;
+
+    Ok(response.response)
+}
+
+/// Streaming chat — nhận model name từ tham số
+pub async fn chat_stream(model: &str, messages: Vec<OllamaChatMessage>, window: &tauri::Window) -> Result<(), String> {
     let client = Client::builder()
         .timeout(std::time::Duration::from_secs(600))
         .build()
         .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
     
     let req_body = OllamaChatRequest {
-        model: CHAT_MODEL.to_string(),
+        model: model.to_string(),
         messages,
         stream: true,
         format: None,
@@ -128,33 +164,19 @@ pub async fn chat_stream(messages: Vec<OllamaChatMessage>, window: &tauri::Windo
     Ok(())
 }
 
-pub async fn generate_quiz(context: &str) -> Result<QuizResponse, String> {
+pub async fn generate_quiz(model: &str, context: &str) -> Result<QuizResponse, String> {
     let client = Client::builder()
         .timeout(std::time::Duration::from_secs(600))
         .build()
         .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
     
     let prompt = format!(
-        "Bạn là một trợ lý giáo dục. Hãy tạo một bài trắc nghiệm (quiz) gồm 5 câu hỏi dựa trên nội dung tài liệu sau. Trả về JSON theo cấu trúc chính xác sau:
-{{
-  \"title\": \"Tiêu đề bài trắc nghiệm\",
-  \"questions\": [
-    {{
-      \"question\": \"Câu hỏi...\",
-      \"options\": [\"A. ...\", \"B. ...\", \"C. ...\", \"D. ...\"],
-      \"correct_answer\": \"A\",
-      \"explanation\": \"Giải thích tại sao...\"
-    }}
-  ]
-}}
-
-TÀI LIỆU:
-{}",
+        "Bạn là một trợ lý giáo dục. Hãy tạo một bài trắc nghiệm (quiz) gồm 5 câu hỏi dựa trên nội dung tài liệu sau. Trả về JSON theo cấu trúc chính xác sau:\n{{\n  \"title\": \"Tiêu đề bài trắc nghiệm\",\n  \"questions\": [\n    {{\n      \"question\": \"Câu hỏi...\",\n      \"options\": [\"A. ...\", \"B. ...\", \"C. ...\", \"D. ...\"],\n      \"correct_answer\": \"A\",\n      \"explanation\": \"Giải thích tại sao...\"\n    }}\n  ]\n}}\n\nTÀI LIỆU:\n{}",
         context
     );
 
     let req_body = OllamaGenerateRequest {
-        model: CHAT_MODEL.to_string(),
+        model: model.to_string(),
         prompt,
         stream: false,
         format: Some("json".to_string()),

@@ -9,7 +9,6 @@ const CHUNK_OVERLAP_WORDS: usize = 50;
 
 // ─── Public helpers ──────────────────────────────────────────────────────────
 
-/// Read a file and return its text content (PDF, DOCX, or plain text).
 pub fn read_file_as_text(file_path: &str) -> Result<String, String> {
     let path = Path::new(file_path);
     let ext = path.extension()
@@ -68,19 +67,21 @@ fn strip_xml_tags(xml: &str) -> String {
 fn read_pdf_as_text(file_path: &str) -> Result<String, String> {
     let bytes = std::fs::read(file_path)
         .map_err(|e| format!("Failed to read PDF file: {}", e))?;
-    // Very rudimentary extraction. Should use proper PDF extraction.
+
+    // Try to extract readable ASCII text
     let text: String = bytes.iter()
         .filter(|&&b| b >= 32 && b < 127 || b == b'\n' || b == b'\r')
         .map(|&b| b as char)
         .collect();
+
     if text.trim().is_empty() || text.len() < 50 {
-        Err("Could not extract text from PDF (binary format). Please install the Python sidecar parser, or convert to .txt/.md first.".to_string())
+        Err("Không thể trích xuất văn bản từ PDF này. Vui lòng chuyển sang định dạng .txt hoặc .docx.".to_string())
     } else {
         Ok(text)
     }
 }
 
-// ─── Main pipeline ───────────────────────────────────────────────────────────
+// ─── Main pipeline: From file path ──────────────────────────────────────────
 
 pub async fn run_rag_ingest(
     app_dir: &Path,
@@ -88,36 +89,55 @@ pub async fn run_rag_ingest(
     raw_path: &str,
     window: &tauri::Window,
 ) -> Result<IngestResult, String> {
-
-    // 1. Read file
     let raw_text = read_file_as_text(raw_path)?;
+    run_rag_ingest_text(app_dir, document_id, &raw_text, window).await
+}
+
+/// Main pipeline: From raw text string (for URL ingestion)
+pub async fn run_rag_ingest_text(
+    app_dir: &Path,
+    document_id: &str,
+    raw_text: &str,
+    window: &tauri::Window,
+) -> Result<IngestResult, String> {
+    use tauri::Emitter;
+
     if raw_text.trim().is_empty() {
-        return Err("File rỗng hoặc không đọc được nội dung.".to_string());
+        return Err("Nội dung rỗng hoặc không đọc được.".to_string());
     }
 
-    // 2. Split into chunks
-    let chunks = vector_store::split_into_chunks(&raw_text, CHUNK_MAX_WORDS, CHUNK_OVERLAP_WORDS);
+    let chunks = vector_store::split_into_chunks(raw_text, CHUNK_MAX_WORDS, CHUNK_OVERLAP_WORDS);
     if chunks.is_empty() {
-        return Err("Không tạo được chunks nào từ file.".to_string());
+        return Err("Không tạo được chunks nào từ nội dung.".to_string());
     }
-    
+
     let total_chunks = chunks.len();
 
-    // 3. Ensure Embed Model exists
+    let _ = window.emit("ingest_progress", serde_json::json!({
+        "status": format!("Đang nhúng {} đoạn văn bản...", total_chunks),
+        "percent": 30
+    }));
+
     ollama_client::ensure_embed_model(window).await?;
 
-    // 4. Batch Embedding
-    // Group chunks into texts
     let chunk_texts: Vec<String> = chunks.iter().map(|c| c.content.clone()).collect();
-    
     let embeddings = ollama_client::embed_texts(chunk_texts).await?;
-    
+
     if embeddings.len() != chunks.len() {
-        return Err(format!("Lỗi nhúng: Trả về {} vectors cho {} chunks", embeddings.len(), chunks.len()));
+        return Err(format!("Lỗi nhúng: {} vectors cho {} chunks", embeddings.len(), chunks.len()));
     }
 
-    // 5. Store in SQLite DB
+    let _ = window.emit("ingest_progress", serde_json::json!({
+        "status": "Đang lưu vào cơ sở dữ liệu...",
+        "percent": 90
+    }));
+
     vector_store::insert_chunks(app_dir, document_id, &chunks, &embeddings)?;
+
+    let _ = window.emit("ingest_progress", serde_json::json!({
+        "status": "Hoàn tất!",
+        "percent": 100
+    }));
 
     Ok(IngestResult {
         document_id: document_id.to_string(),

@@ -1,9 +1,10 @@
 use tauri::Manager;
 use reqwest::Client;
-use crate::services::{ingest_engine, chat_engine, vector_store};
-use crate::models::ChunkRecord;
+use crate::services::{ingest_engine, chat_engine, vector_store, web_scraper};
+use crate::models::{ChunkRecord, LlmConfig, ChatHistoryMessage, IngestResult};
 
-/// Check if Ollama process is running (API accessible)
+// ─── Ollama Status ─────────────────────────────────────────────────────────────
+
 #[tauri::command]
 pub async fn check_ollama() -> Result<bool, String> {
     let client = Client::builder()
@@ -16,7 +17,6 @@ pub async fn check_ollama() -> Result<bool, String> {
     }
 }
 
-/// Check if Ollama binary is installed on the system
 #[tauri::command]
 pub async fn check_ollama_installed() -> bool {
     std::process::Command::new("ollama")
@@ -25,7 +25,6 @@ pub async fn check_ollama_installed() -> bool {
         .is_ok()
 }
 
-/// Start ollama serve as a background process
 #[tauri::command]
 pub async fn start_ollama_serve(app: tauri::AppHandle) -> Result<(), String> {
     use tauri_plugin_shell::ShellExt;
@@ -38,7 +37,6 @@ pub async fn start_ollama_serve(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// Install Ollama via winget (Windows Package Manager) with streaming progress events
 #[tauri::command]
 pub async fn install_ollama(window: tauri::Window) -> Result<(), String> {
     use tauri::Emitter;
@@ -97,13 +95,12 @@ pub async fn install_ollama(window: tauri::Window) -> Result<(), String> {
     }
 
     let _ = window.emit("ollama_install_progress", serde_json::json!({
-        "status": "Đang tải qua BITS (hỗ trợ tiếp tục nếu ngắt mạng)...",
+        "status": "Đang tải qua BITS...",
         "percent": 5
     }));
 
     let tmp = std::env::temp_dir().join("OllamaSetup.exe");
     let tmp_str = tmp.to_string_lossy().to_string();
-
     let ps_script = format!(
         "Start-BitsTransfer -Source 'https://ollama.com/download/OllamaSetup.exe' -Destination '{}'; Start-Process '{}'",
         tmp_str, tmp_str
@@ -171,45 +168,103 @@ pub async fn pull_ollama_model(window: tauri::Window, model: String) -> Result<(
     Ok(())
 }
 
+// ─── Settings ──────────────────────────────────────────────────────────────────
+
 #[tauri::command]
 pub async fn get_settings() -> Result<String, String> {
     Ok("{}".to_string())
 }
 
+// ─── Ingest (File) ─────────────────────────────────────────────────────────────
+
 #[tauri::command]
-pub async fn ingest_document(app: tauri::AppHandle, window: tauri::Window, document_id: String, raw_path: String) -> Result<crate::models::IngestResult, String> {
+pub async fn ingest_document(
+    app: tauri::AppHandle,
+    window: tauri::Window,
+    document_id: String,
+    raw_path: String,
+) -> Result<IngestResult, String> {
     let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     ingest_engine::run_rag_ingest(&app_dir, &document_id, &raw_path, &window).await
 }
 
+// ─── Ingest (URL) — NEW ────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn ingest_url(
+    app: tauri::AppHandle,
+    window: tauri::Window,
+    url: String,
+    document_id: String,
+) -> Result<IngestResult, String> {
+    use tauri::Emitter;
+    
+    let _ = window.emit("ingest_progress", serde_json::json!({
+        "status": "Đang tải nội dung từ URL...",
+        "percent": 5
+    }));
+
+    let text = web_scraper::fetch_url_as_text(&url).await?;
+    
+    let _ = window.emit("ingest_progress", serde_json::json!({
+        "status": "Đang xử lý và nhúng nội dung...",
+        "percent": 20
+    }));
+
+    let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    
+    // Write text to a temp buffer and pass to ingest pipeline directly
+    ingest_engine::run_rag_ingest_text(&app_dir, &document_id, &text, &window).await
+}
+
+// ─── Chat ──────────────────────────────────────────────────────────────────────
+
 #[tauri::command]
 pub async fn send_chat_message(
-    app: tauri::AppHandle, 
-    window: tauri::Window, 
-    message: String, 
-    mode: String, 
-    context_ids: Vec<String>
+    app: tauri::AppHandle,
+    window: tauri::Window,
+    message: String,
+    mode: String,
+    context_ids: Vec<String>,
+    history: Vec<ChatHistoryMessage>,
+    use_rag: bool,
+    llm_config: LlmConfig,
 ) -> Result<(), String> {
     let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    chat_engine::handle_chat_query(&app_dir, message, mode, context_ids, &window).await
+    chat_engine::handle_chat_query(
+        &app_dir, message, mode, context_ids, history, use_rag, llm_config, &window
+    ).await
 }
 
+// ─── Quiz ──────────────────────────────────────────────────────────────────────
+
 #[tauri::command]
-pub async fn generate_quiz(app: tauri::AppHandle, document_id: String) -> Result<String, String> {
+pub async fn generate_quiz(
+    app: tauri::AppHandle,
+    document_id: String,
+    llm_config: LlmConfig,
+) -> Result<String, String> {
     let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    chat_engine::handle_generate_quiz(&app_dir, document_id).await
+    let quiz = chat_engine::handle_generate_quiz(&app_dir, document_id, llm_config).await?;
+    serde_json::to_string(&quiz).map_err(|e| format!("Failed to serialize quiz: {}", e))
 }
 
-// ─── Document Management Commands ─────────────────────────────────────────────
+// ─── Document Management ───────────────────────────────────────────────────────
 
 #[tauri::command]
-pub async fn get_document_chunks(app: tauri::AppHandle, document_id: String) -> Result<Vec<ChunkRecord>, String> {
+pub async fn get_document_chunks(
+    app: tauri::AppHandle,
+    document_id: String,
+) -> Result<Vec<ChunkRecord>, String> {
     let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     vector_store::get_document_chunks(&app_dir, &document_id)
 }
 
 #[tauri::command]
-pub async fn delete_document(app: tauri::AppHandle, document_id: String) -> Result<(), String> {
+pub async fn delete_document(
+    app: tauri::AppHandle,
+    document_id: String,
+) -> Result<(), String> {
     let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     vector_store::delete_document_from_db(&app_dir, &document_id)
 }

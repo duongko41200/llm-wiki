@@ -4,15 +4,18 @@ import { useEffect, useState } from "react";
 import { ChatPanel } from "./components/chat/ChatPanel";
 import { UploadDropzone } from "./components/documents/UploadDropzone";
 import { DocumentsPanel } from "./components/documents/DocumentsPanel";
+import { SettingsPanel } from "./components/settings/SettingsPanel";
 import { ThemeProvider, useTheme } from "./contexts/ThemeContext";
 import { OnboardingWizard } from "./components/onboarding/OnboardingWizard";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { OllamaSetup } from "./components/setup/OllamaSetup";
+import { useAppStore } from "./stores/appStore";
 
 const AppContent = () => {
   const { theme, toggleTheme } = useTheme();
   const [ollamaStatus, setOllamaStatus] = useState<string>("Checking...");
   const [ollamaReady, setOllamaReady] = useState(false);
+  const { llmConfig } = useAppStore();
 
   useEffect(() => {
     const checkOllama = async () => {
@@ -28,7 +31,12 @@ const AppContent = () => {
     checkOllama();
   }, []);
 
-  const [activeTab, setActiveTab] = useState<"documents" | "wiki" | "chat">(
+  // If using Gemini, bypass Ollama check for UI
+  const isReady = llmConfig.provider === 'gemini'
+    ? (llmConfig.api_key ? true : false)
+    : ollamaReady;
+
+  const [activeTab, setActiveTab] = useState<"documents" | "wiki" | "chat" | "settings">(
     "documents",
   );
 
@@ -37,165 +45,121 @@ const AppContent = () => {
     onNew: () => setActiveTab("documents"),
   });
 
+  const navItems = [
+    { id: "documents" as const, icon: <Book size={18} />, label: "Upload File" },
+    { id: "wiki" as const, icon: <FileText size={18} />, label: "QL Tài liệu" },
+    { id: "chat" as const, icon: <Bot size={18} />, label: "Chat & Hỏi đáp" },
+    { id: "settings" as const, icon: <Settings size={18} />, label: "Cài đặt LLM" },
+  ];
+
   return (
     <div style={{ display: "flex", width: "100vw", height: "100vh", backgroundColor: "var(--bg-main)", color: "var(--text-main)" }}>
       <OnboardingWizard />
+      
       {/* Sidebar */}
-      <div
-        style={{
-          width: "250px",
-          backgroundColor: "var(--bg-sidebar)",
-          borderRight: "1px solid var(--border-color)",
-          display: "flex",
-          flexDirection: "column",
-          padding: "1rem",
-        }}
-      >
-        <h2
-          style={{
-            fontSize: "1.2rem",
-            marginBottom: "2rem",
-            display: "flex",
-            alignItems: "center",
-            gap: "0.5rem",
-          }}
-        >
+      <div style={{
+        width: "220px",
+        backgroundColor: "var(--bg-sidebar)",
+        borderRight: "1px solid var(--border-color)",
+        display: "flex",
+        flexDirection: "column",
+        padding: "1rem",
+      }}>
+        <h2 style={{ fontSize: "1.1rem", marginBottom: "2rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
           <Database size={20} /> KnowledgeForge
         </h2>
 
-        <nav
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "0.5rem",
-            flex: 1,
-          }}
-        >
-          <div
-            onClick={() => setActiveTab("documents")}
-            style={{
-              padding: "0.5rem",
-              borderRadius: "4px",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: "0.5rem",
-              backgroundColor:
-                activeTab === "documents"
-                  ? "rgba(255,255,255,0.1)"
-                  : "transparent",
-            }}
-          >
-            <Book size={18} /> Upload file
-          </div>
-          <div
-            onClick={() => setActiveTab("wiki")}
-            style={{
-              padding: "0.5rem",
-              borderRadius: "4px",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: "0.5rem",
-              backgroundColor:
-                activeTab === "wiki" ? "rgba(255,255,255,0.1)" : "transparent",
-            }}
-          >
-            <FileText size={18} /> QL Tài liệu
-          </div>
-          <div
-            onClick={() => setActiveTab("chat")}
-            style={{
-              padding: "0.5rem",
-              borderRadius: "4px",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: "0.5rem",
-              backgroundColor:
-                activeTab === "chat" ? "rgba(255,255,255,0.1)" : "transparent",
-            }}
-          >
-            <Bot size={18} /> Chat & Hỏi đáp
-          </div>
-        </nav>
-
-        <div
-          style={{
-            borderTop: "1px solid var(--border-color)",
-            paddingTop: "1rem",
-          }}
-        >
-          <div
-            style={{
-              fontSize: "0.8rem",
-              color: "var(--text-muted)",
-              marginBottom: "0.5rem",
-            }}
-          >
-            Ollama:{" "}
-            <strong
+        <nav style={{ display: "flex", flexDirection: "column", gap: "0.3rem", flex: 1 }}>
+          {navItems.map(({ id, icon, label }) => (
+            <div
+              key={id}
+              onClick={() => setActiveTab(id)}
               style={{
-                color: ollamaStatus === "Online" ? "lightgreen" : "coral",
+                padding: "0.6rem 0.75rem",
+                borderRadius: "8px",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "0.6rem",
+                fontSize: "0.9rem",
+                fontWeight: activeTab === id ? 600 : 400,
+                backgroundColor: activeTab === id ? "rgba(59,130,246,0.15)" : "transparent",
+                color: activeTab === id ? "#3b82f6" : "var(--text-main)",
+                transition: "all 0.15s ease",
               }}
             >
-              {ollamaStatus}
-            </strong>
+              {icon} {label}
+            </div>
+          ))}
+        </nav>
+
+        <div style={{ borderTop: "1px solid var(--border-color)", paddingTop: "1rem" }}>
+          {/* LLM Status indicator */}
+          <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: "0.75rem" }}>
+            {llmConfig.provider === 'ollama' ? (
+              <>Ollama: <strong style={{ color: ollamaStatus === "Online" ? "lightgreen" : "coral" }}>{ollamaStatus}</strong></>
+            ) : (
+              <>Gemini: <strong style={{ color: llmConfig.api_key ? "lightgreen" : "coral" }}>{llmConfig.api_key ? "Configured" : "No API Key"}</strong></>
+            )}
           </div>
-          <div
-            style={{
-              padding: "0.5rem",
-              borderRadius: "4px",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: "0.5rem",
-            }}
-          >
-            <Settings size={18} /> Settings
-          </div>
+          
           <div
             onClick={toggleTheme}
             style={{
-              padding: "0.5rem",
-              borderRadius: "4px",
+              padding: "0.5rem 0.75rem",
+              borderRadius: "8px",
               cursor: "pointer",
               display: "flex",
               alignItems: "center",
               gap: "0.5rem",
-              marginTop: "0.5rem"
+              fontSize: "0.85rem",
+              color: "var(--text-muted)",
             }}
           >
-            {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />} {theme === "dark" ? "Light Mode" : "Dark Mode"}
+            {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+            {theme === "dark" ? "Light Mode" : "Dark Mode"}
           </div>
         </div>
       </div>
 
       {/* Main Content */}
-      <div
-        style={{
-          flex: 1,
-          backgroundColor: "var(--bg-main)",
-          padding: "2rem",
-          overflowY: "auto",
-        }}
-      >
-        <h1>Welcome to KnowledgeForge</h1>
+      <div style={{ flex: 1, backgroundColor: "var(--bg-main)", padding: "1.5rem", overflowY: "auto", display: "flex", flexDirection: "column" }}>
         
-        <div style={{ marginTop: "2rem", height: "calc(100vh - 150px)" }}>
+        <div style={{ flex: 1, height: "100%", minHeight: 0 }}>
           {activeTab === "documents" && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-              {!ollamaReady && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', maxWidth: '650px', margin: '0 auto' }}>
+              <h1 style={{ margin: 0 }}>📤 Tải lên Tài liệu</h1>
+              {!isReady && llmConfig.provider === 'ollama' && (
                 <OllamaSetup onReady={() => {
                   setOllamaReady(true);
                   setOllamaStatus("Online");
                 }} />
               )}
-              {ollamaReady && <UploadDropzone />}
+              {(isReady || llmConfig.provider === 'gemini') && <UploadDropzone />}
             </div>
           )}
-          {activeTab === "wiki" && <DocumentsPanel />}
-          {activeTab === "chat" && <ChatPanel />}
+          
+          {activeTab === "wiki" && (
+            <div style={{ height: '100%' }}>
+              <h1 style={{ margin: '0 0 1.5rem 0' }}>📚 Quản lý Tài liệu</h1>
+              <DocumentsPanel />
+            </div>
+          )}
+          
+          {activeTab === "chat" && (
+            <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+              <h1 style={{ margin: '0 0 1rem 0', flexShrink: 0 }}>💬 Chat & Hỏi đáp</h1>
+              <div style={{ flex: 1, minHeight: 0 }}>
+                <ChatPanel />
+              </div>
+            </div>
+          )}
+          
+          {activeTab === "settings" && (
+            <div>
+              <SettingsPanel />
+            </div>
+          )}
         </div>
       </div>
     </div>

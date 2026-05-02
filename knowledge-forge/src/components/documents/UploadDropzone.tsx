@@ -4,6 +4,7 @@ import Database from '@tauri-apps/plugin-sql';
 import { open } from '@tauri-apps/plugin-dialog';
 import { useAppStore, DocumentRecord } from '../../stores/appStore';
 import { useIngest } from '../../hooks/useIngest';
+import { UrlInput } from './UrlInput';
 
 export const UploadDropzone: React.FC = () => {
   const {
@@ -155,6 +156,16 @@ export const UploadDropzone: React.FC = () => {
           )}
         </div>
       )}
+
+      {/* URL Input */}
+      <div style={{ marginTop: '0.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '0 0 0.75rem 0', color: 'var(--text-muted)' }}>
+          <div style={{ flex: 1, height: '1px', backgroundColor: 'var(--border-color)' }} />
+          <span style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}>hoặc</span>
+          <div style={{ flex: 1, height: '1px', backgroundColor: 'var(--border-color)' }} />
+        </div>
+        <UrlInput />
+      </div>
     </div>
   );
 };

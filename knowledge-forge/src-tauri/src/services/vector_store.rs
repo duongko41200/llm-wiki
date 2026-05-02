@@ -182,13 +182,16 @@ pub fn search_similar_chunks(
             0.0
         };
         
+        // Skip irrelevant chunks early (threshold: 0.3 = weak relevance)
+        if score < 0.30 { continue; }
+        
         scored_chunks.push(ScoredChunk {
             chunk: ChunkRecord {
                 id,
                 document_id: doc_id,
                 chunk_index: chunk_idx,
                 content,
-                embedding: None, // Don't return embedding to frontend/caller to save memory
+                embedding: None, // Don't return embedding to save memory
                 word_count,
             },
             score,

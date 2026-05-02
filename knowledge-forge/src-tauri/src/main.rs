@@ -63,6 +63,7 @@ fn main() {
             commands::pull_ollama_model,
             commands::get_settings,
             commands::ingest_document,
+            commands::ingest_url,
             commands::send_chat_message,
             commands::generate_quiz,
             commands::get_document_chunks,
