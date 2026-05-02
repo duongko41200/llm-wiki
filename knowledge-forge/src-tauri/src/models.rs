@@ -1,57 +1,45 @@
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
 
-#[derive(Error, Debug)]
-pub enum AppError {
-    #[error("IO error: {0}")]
-    Io(#[from] std::io::Error),
-    #[error("Network error: {0}")]
-    Network(#[from] reqwest::Error),
-    #[error("Serialization error: {0}")]
-    Serialization(#[from] serde_json::Error),
-    #[error("General error: {0}")]
-    General(String),
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ChunkData {
+    pub chunk_index: usize,
+    pub content: String,
+    pub word_count: usize,
 }
 
-// Implement Serialize so it can be sent to the frontend via Tauri IPC
-impl serde::Serialize for AppError {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.serialize_str(self.to_string().as_ref())
-    }
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ChunkRecord {
+    pub id: i64,
+    pub document_id: String,
+    pub chunk_index: i64,
+    pub content: String,
+    pub embedding: Option<Vec<f32>>,
+    pub word_count: i64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ScoredChunk {
+    pub chunk: ChunkRecord,
+    pub score: f32,
+    pub document_title: String,
+}
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct IngestResult {
     pub document_id: String,
     pub status: String,
-    pub wiki_source_path: Option<String>,
+    pub chunks_count: usize,
     pub error_message: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Entity {
-    pub name: String,
-    pub r#type: String, // person, org, tool, etc.
-    pub description: String,
+pub struct OllamaEmbedRequest {
+    pub model: String,
+    pub input: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Concept {
-    pub name: String,
-    pub definition: String,
-    pub domain: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ExtractedKnowledge {
-    pub summary: String,
-    pub key_takeaways: Vec<String>,
-    pub entities: Vec<Entity>,
-    pub concepts: Vec<Concept>,
-    pub quotes: Vec<String>,
+pub struct OllamaEmbedResponse {
+    pub embeddings: Vec<Vec<f32>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -96,7 +84,7 @@ pub struct OllamaChatStreamResponse {
 pub struct QuizQuestion {
     pub question: String,
     pub options: Vec<String>,
-    pub correct_answer: usize,
+    pub correct_answer: String,
     pub explanation: String,
 }
 

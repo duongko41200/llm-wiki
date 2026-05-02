@@ -3,7 +3,7 @@ import { Book, Bot, Database, FileText, Settings, Moon, Sun } from "lucide-react
 import { useEffect, useState } from "react";
 import { ChatPanel } from "./components/chat/ChatPanel";
 import { UploadDropzone } from "./components/documents/UploadDropzone";
-import { WikiIndex } from "./components/wiki/WikiIndex";
+import { DocumentsPanel } from "./components/documents/DocumentsPanel";
 import { ThemeProvider, useTheme } from "./contexts/ThemeContext";
 import { OnboardingWizard } from "./components/onboarding/OnboardingWizard";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
@@ -86,7 +86,7 @@ const AppContent = () => {
                   : "transparent",
             }}
           >
-            <Book size={18} /> Documents
+            <Book size={18} /> Upload file
           </div>
           <div
             onClick={() => setActiveTab("wiki")}
@@ -101,7 +101,7 @@ const AppContent = () => {
                 activeTab === "wiki" ? "rgba(255,255,255,0.1)" : "transparent",
             }}
           >
-            <FileText size={18} /> Wiki
+            <FileText size={18} /> QL Tài liệu
           </div>
           <div
             onClick={() => setActiveTab("chat")}
@@ -116,7 +116,7 @@ const AppContent = () => {
                 activeTab === "chat" ? "rgba(255,255,255,0.1)" : "transparent",
             }}
           >
-            <Bot size={18} /> Chat
+            <Bot size={18} /> Chat & Hỏi đáp
           </div>
         </nav>
 
@@ -181,8 +181,7 @@ const AppContent = () => {
         }}
       >
         <h1>Welcome to KnowledgeForge</h1>
-        <p>Phase 3: Knowledge Building — Ingest.</p>
-
+        
         <div style={{ marginTop: "2rem", height: "calc(100vh - 150px)" }}>
           {activeTab === "documents" && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -195,7 +194,7 @@ const AppContent = () => {
               {ollamaReady && <UploadDropzone />}
             </div>
           )}
-          {activeTab === "wiki" && <WikiIndex />}
+          {activeTab === "wiki" && <DocumentsPanel />}
           {activeTab === "chat" && <ChatPanel />}
         </div>
       </div>

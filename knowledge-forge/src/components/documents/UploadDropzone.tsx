@@ -1,140 +1,160 @@
-import { useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import React, { useCallback } from 'react';
+import { Upload, FileText, CheckCircle, AlertCircle, XCircle, Loader2 } from 'lucide-react';
+import Database from '@tauri-apps/plugin-sql';
 import { open } from '@tauri-apps/plugin-dialog';
-import { UploadCloud, Bot, FileText } from 'lucide-react';
+import { useAppStore, DocumentRecord } from '../../stores/appStore';
 import { useIngest } from '../../hooks/useIngest';
 
-export const UploadDropzone = () => {
-  const [parsing, setParsing] = useState(false);
-  const [result, setResult] = useState<string | null>(null);
-  const [parsedPath, setParsedPath] = useState<string | null>(null);
-  const [fileName, setFileName] = useState<string | null>(null);
-  const { startIngest, isIngesting, error: ingestError, result: ingestResult } = useIngest();
+export const UploadDropzone: React.FC = () => {
+  const {
+    uploadedFileName, parsedPath, fileType,
+    setUploadedFile, setParseResult, setDocuments, documentsLoading, setDocumentsLoading
+  } = useAppStore();
 
-  const handleUploadClick = async () => {
-    // Open native OS file picker dialog
-    const selected = await open({
-      multiple: false,
-      filters: [
-        { name: 'Documents', extensions: ['pdf', 'docx', 'md', 'txt'] }
-      ]
-    });
+  const { startIngest, ingestStatus, ingestError, ingestResult, ingestProgress } = useIngest();
 
-    if (!selected) return;
-
-    const filePath = typeof selected === 'string' ? selected : selected;
-    const name = filePath.split(/[\\/]/).pop() ?? filePath;
-    setFileName(name);
-
-    let fileType = 'txt';
-    if (filePath.endsWith('.pdf')) fileType = 'pdf';
-    else if (filePath.endsWith('.docx')) fileType = 'docx';
-    else if (filePath.endsWith('.md')) fileType = 'md';
-
-    const outputPath = filePath + '.md';
-
-    setParsing(true);
-    setResult(null);
-    setParsedPath(null);
+  const fetchDocuments = useCallback(async () => {
     try {
-        const out = await invoke<string>('parse_document', {
-            inputPath: filePath,
-            fileType,
-            outputPath
-        });
-        setResult(`Parsed successfully!`);
-        setParsedPath(outputPath);
-    } catch (_e) {
-        // parse_document uses a sidecar binary that may not exist yet.
-        // Fall back: treat the file as raw text directly.
-        setResult(`Ready for ingestion (raw mode)`);
-        setParsedPath(filePath);
+      setDocumentsLoading(true);
+      const db = await Database.load('sqlite:knowledge_forge.db');
+      const docs: DocumentRecord[] = await db.select(
+        'SELECT * FROM documents ORDER BY created_at DESC'
+      );
+      setDocuments(docs);
+    } catch (err) {
+      console.error('Failed to fetch documents:', err);
     } finally {
-        setParsing(false);
+      setDocumentsLoading(false);
+    }
+  }, [setDocuments, setDocumentsLoading]);
+
+  const handleSelectFile = async () => {
+    try {
+      const selected = await open({
+        multiple: false,
+        filters: [{
+          name: 'Documents',
+          extensions: ['pdf', 'docx', 'txt', 'md']
+        }]
+      });
+
+      if (!selected) return;
+
+      const absolutePath = typeof selected === 'string' ? selected : selected.path;
+      if (!absolutePath) return;
+
+      const fileName = absolutePath.split(/[\\/]/).pop() || 'Unknown file';
+      const ext = fileName.split('.').pop()?.toLowerCase() || '';
+
+      const db = await Database.load('sqlite:knowledge_forge.db');
+      const docId = crypto.randomUUID();
+
+      await db.execute(
+        `INSERT INTO documents (id, title, original_filename, raw_path, file_type, status, file_size_bytes)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [docId, fileName.replace(/\.[^/.]+$/, ""), fileName, absolutePath, ext, 'uploading', null]
+      );
+
+      setUploadedFile(fileName, absolutePath, ext);
+      setParseResult('File ready for processing.');
+
+      // Refresh list
+      fetchDocuments();
+
+      // Automatically start ingestion
+      await startIngest(docId, absolutePath);
+      
+      // Refresh list after ingestion
+      fetchDocuments();
+
+    } catch (err) {
+      console.error('Upload flow error:', err);
+      alert('Lỗi chọn file: ' + String(err));
     }
   };
 
-  const handleIngestClick = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!parsedPath) return;
-    const docId = 'doc_' + Math.floor(Math.random() * 10000);
-    await startIngest(docId, parsedPath);
-  };
-
   return (
-    <div
-        onClick={!parsing ? handleUploadClick : undefined}
+    <div style={{
+      width: '100%',
+      maxWidth: '600px',
+      margin: '0 auto',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '1rem',
+      fontFamily: 'Inter, sans-serif'
+    }}>
+      <div 
+        onClick={ingestStatus === 'ingesting' ? undefined : handleSelectFile}
         style={{
-            border: `2px dashed ${fileName ? '#3b82f6' : 'var(--border-color)'}`,
-            borderRadius: '12px',
-            padding: '3rem 2rem',
-            textAlign: 'center',
-            cursor: parsing ? 'wait' : 'pointer',
-            backgroundColor: 'rgba(59,130,246,0.05)',
-            transition: 'all 0.2s ease',
+          border: '2px dashed var(--border-color)',
+          borderRadius: '12px',
+          padding: '3rem 2rem',
+          textAlign: 'center',
+          cursor: ingestStatus === 'ingesting' ? 'not-allowed' : 'pointer',
+          backgroundColor: ingestStatus === 'ingesting' ? 'rgba(0,0,0,0.05)' : 'var(--bg-card)',
+          transition: 'all 0.2s',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '1rem'
+        }}
+      >
+        <Upload size={48} color={ingestStatus === 'ingesting' ? '#9ca3af' : '#60a5fa'} />
+        <div>
+          <h3 style={{ margin: '0 0 0.5rem 0', color: 'var(--text-main)' }}>
+            Tải tài liệu lên (PDF, DOCX, TXT)
+          </h3>
+          <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+            Click để mở hộp thoại chọn file
+          </p>
+        </div>
+      </div>
+
+      {uploadedFileName && (
+        <div style={{
+          padding: '1rem',
+          backgroundColor: 'var(--bg-card)',
+          borderRadius: '8px',
+          border: '1px solid var(--border-color)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.5rem'
         }}>
-
-        {fileName ? (
-          <FileText size={48} style={{ margin: '0 auto', color: '#3b82f6' }} />
-        ) : (
-          <UploadCloud size={48} style={{ margin: '0 auto', color: 'var(--text-muted)' }} />
-        )}
-
-        <h3 style={{ marginTop: '1rem' }}>
-          {fileName ? fileName : 'Click to Upload Document'}
-        </h3>
-        <p style={{ color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-          {fileName ? 'Click to change file' : 'Supported: PDF, DOCX, Markdown, TXT'}
-        </p>
-
-        {parsing && (
-          <div style={{ marginTop: '1rem', color: '#60a5fa' }}>
-            ⏳ Reading file... please wait.
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 500 }}>
+            <FileText size={18} color="#60a5fa" />
+            {uploadedFileName}
           </div>
-        )}
-        {result && (
-          <div style={{
-            marginTop: '1rem',
-            fontSize: '0.9rem',
-            color: result.startsWith('Ready') || result.startsWith('Parsed') ? '#4ade80' : 'coral',
-            fontWeight: 500
-          }}>
-            ✓ {result}
-          </div>
-        )}
 
-        {parsedPath && (
-            <div
-              style={{ marginTop: '2rem', padding: '1rem', borderTop: '1px solid var(--border-color)' }}
-              onClick={e => e.stopPropagation()}
-            >
-                <h4 style={{ marginBottom: '0.5rem' }}>Ready to build knowledge wiki</h4>
-                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', wordBreak: 'break-all' }}>{parsedPath}</p>
-                <button
-                    onClick={handleIngestClick}
-                    disabled={isIngesting}
-                    style={{
-                        marginTop: '1rem',
-                        padding: '0.6rem 1.5rem',
-                        backgroundColor: isIngesting ? '#475569' : '#3b82f6',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '6px',
-                        cursor: isIngesting ? 'not-allowed' : 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.5rem',
-                        margin: '1rem auto 0 auto',
-                        fontWeight: 600,
-                        fontSize: '0.95rem'
-                    }}
-                >
-                    <Bot size={18} /> {isIngesting ? 'Ingesting...' : '🚀 Start Knowledge Ingestion'}
-                </button>
-                {ingestError && <div style={{ marginTop: '1rem', color: 'coral', fontSize: '0.9rem' }}>❌ {ingestError}</div>}
-                {ingestResult && <div style={{ marginTop: '1rem', color: '#4ade80', fontSize: '0.9rem' }}>✅ Wiki built! Switch to the Wiki tab.</div>}
+          {ingestStatus === 'ingesting' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#eab308', marginTop: '0.5rem' }}>
+              <Loader2 size={16} className="animate-spin" />
+              <span>Đang xử lý tài liệu (trích xuất & tạo vector nhúng)...</span>
+              {ingestProgress && (
+                <span style={{ fontSize: '0.8rem', marginLeft: 'auto' }}>
+                  {ingestProgress.status || `${ingestProgress.current}%`}
+                </span>
+              )}
             </div>
-        )}
+          )}
+
+          {ingestStatus === 'done' && ingestResult && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#22c55e', marginTop: '0.5rem' }}>
+              <CheckCircle size={16} />
+              <span>Xử lý hoàn tất! Đã tạo <strong>{ingestResult.chunks_count}</strong> đoạn dữ liệu.</span>
+            </div>
+          )}
+
+          {ingestStatus === 'error' && (
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', color: '#ef4444', marginTop: '0.5rem' }}>
+              <XCircle size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <span style={{ fontWeight: 500 }}>Lỗi xử lý</span>
+                <span style={{ fontSize: '0.9rem', opacity: 0.9 }}>{ingestError}</span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };

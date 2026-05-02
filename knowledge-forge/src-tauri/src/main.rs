@@ -26,6 +26,19 @@ fn main() {
                     created_at TEXT NOT NULL DEFAULT (datetime('now')),
                     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
                 );
+
+                CREATE TABLE IF NOT EXISTS chunks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    document_id TEXT NOT NULL,
+                    chunk_index INTEGER NOT NULL,
+                    content TEXT NOT NULL,
+                    embedding BLOB,
+                    word_count INTEGER,
+                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_chunks_document ON chunks(document_id);
                 
                 CREATE TABLE IF NOT EXISTS settings (
                     key TEXT PRIMARY KEY,
@@ -45,15 +58,15 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             commands::check_ollama,
             commands::check_ollama_installed,
-            commands::install_ollama,
             commands::start_ollama_serve,
+            commands::install_ollama,
             commands::pull_ollama_model,
             commands::get_settings,
-            commands::parse_document,
             commands::ingest_document,
-            commands::get_wiki_index,
             commands::send_chat_message,
-            commands::generate_quiz
+            commands::generate_quiz,
+            commands::get_document_chunks,
+            commands::delete_document
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

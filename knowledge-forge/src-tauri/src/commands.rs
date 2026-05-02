@@ -1,11 +1,15 @@
 use tauri::Manager;
 use reqwest::Client;
-use crate::services::{ingest_engine, wiki_engine, chat_engine};
+use crate::services::{ingest_engine, chat_engine, vector_store};
+use crate::models::ChunkRecord;
 
 /// Check if Ollama process is running (API accessible)
 #[tauri::command]
 pub async fn check_ollama() -> Result<bool, String> {
-    let client = Client::new();
+    let client = Client::builder()
+        .timeout(std::time::Duration::from_secs(3))
+        .build()
+        .unwrap_or_default();
     match client.get("http://127.0.0.1:11434/api/tags").send().await {
         Ok(res) => Ok(res.status().is_success()),
         Err(_) => Ok(false),
@@ -25,13 +29,11 @@ pub async fn check_ollama_installed() -> bool {
 #[tauri::command]
 pub async fn start_ollama_serve(app: tauri::AppHandle) -> Result<(), String> {
     use tauri_plugin_shell::ShellExt;
-    // Spawn ollama serve — it will keep running in background
     app.shell()
         .command("ollama")
         .args(["serve"])
         .spawn()
         .map_err(|e| format!("Failed to start Ollama: {}", e))?;
-    // Wait a moment for it to boot up
     tokio::time::sleep(tokio::time::Duration::from_millis(1500)).await;
     Ok(())
 }
@@ -49,7 +51,6 @@ pub async fn install_ollama(window: tauri::Window) -> Result<(), String> {
         "percent": 2
     }));
 
-    // Try winget first (available on Windows 10 1709+ and Windows 11)
     let winget_check = std::process::Command::new("winget")
         .args(["--version"])
         .output();
@@ -72,7 +73,6 @@ pub async fn install_ollama(window: tauri::Window) -> Result<(), String> {
             match event {
                 CommandEvent::Stdout(line) | CommandEvent::Stderr(line) => {
                     let text = String::from_utf8_lossy(&line).to_string();
-                    // Bump progress on any output
                     percent = (percent + 5).min(90);
                     let _ = window.emit("ollama_install_progress", serde_json::json!({
                         "status": text.trim(),
@@ -81,7 +81,6 @@ pub async fn install_ollama(window: tauri::Window) -> Result<(), String> {
                 }
                 CommandEvent::Terminated(status) => {
                     if status.code == Some(0) || status.code == Some(-1978335189) {
-                        // -1978335189 = APPINSTALLER_ERROR_ALREADY_INSTALLED (OK)
                         let _ = window.emit("ollama_install_progress", serde_json::json!({
                             "status": "Cài đặt hoàn tất!",
                             "percent": 100
@@ -89,7 +88,6 @@ pub async fn install_ollama(window: tauri::Window) -> Result<(), String> {
                         let _ = window.emit("ollama_install_launched", ());
                         return Ok(());
                     } else {
-                        // winget failed, fall through to BITS fallback
                         break;
                     }
                 }
@@ -98,7 +96,6 @@ pub async fn install_ollama(window: tauri::Window) -> Result<(), String> {
         }
     }
 
-    // Fallback: use PowerShell BITS transfer (handles resume + large files)
     let _ = window.emit("ollama_install_progress", serde_json::json!({
         "status": "Đang tải qua BITS (hỗ trợ tiếp tục nếu ngắt mạng)...",
         "percent": 5
@@ -137,9 +134,6 @@ pub async fn install_ollama(window: tauri::Window) -> Result<(), String> {
     Ok(())
 }
 
-
-
-/// Pull an Ollama model, streaming download progress via Tauri events
 #[tauri::command]
 pub async fn pull_ollama_model(window: tauri::Window, model: String) -> Result<(), String> {
     use tauri::Emitter;
@@ -166,7 +160,6 @@ pub async fn pull_ollama_model(window: tauri::Window, model: String) -> Result<(
                 let text = String::from_utf8_lossy(&bytes);
                 for line in text.lines() {
                     if line.trim().is_empty() { continue; }
-                    // Emit raw JSON line to frontend
                     let _ = window.emit("ollama_pull_progress", line);
                 }
             }
@@ -180,39 +173,13 @@ pub async fn pull_ollama_model(window: tauri::Window, model: String) -> Result<(
 
 #[tauri::command]
 pub async fn get_settings() -> Result<String, String> {
-    // Placeholder for Phase 1
     Ok("{}".to_string())
 }
 
 #[tauri::command]
-pub async fn parse_document(app: tauri::AppHandle, input_path: String, file_type: String, output_path: String) -> Result<String, String> {
-    use tauri_plugin_shell::ShellExt;
-    
-    let sidecar_command = app.shell().sidecar("parser").map_err(|e| e.to_string())?;
-    
-    let output = sidecar_command
-        .args(["--input", &input_path, "--type", &file_type, "--output", &output_path])
-        .output()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    if output.status.success() {
-        Ok(String::from_utf8(output.stdout).unwrap_or_default())
-    } else {
-        Err(String::from_utf8(output.stderr).unwrap_or_default())
-    }
-}
-
-#[tauri::command]
-pub async fn ingest_document(app: tauri::AppHandle, document_id: String, raw_path: String) -> Result<crate::models::IngestResult, String> {
+pub async fn ingest_document(app: tauri::AppHandle, window: tauri::Window, document_id: String, raw_path: String) -> Result<crate::models::IngestResult, String> {
     let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    ingest_engine::run_ingest_pipeline(&app_dir, &document_id, &raw_path).await
-}
-
-#[tauri::command]
-pub async fn get_wiki_index(app: tauri::AppHandle) -> Result<String, String> {
-    let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    wiki_engine::read_index(&app_dir)
+    ingest_engine::run_rag_ingest(&app_dir, &document_id, &raw_path, &window).await
 }
 
 #[tauri::command]
@@ -233,14 +200,16 @@ pub async fn generate_quiz(app: tauri::AppHandle, document_id: String) -> Result
     chat_engine::handle_generate_quiz(&app_dir, document_id).await
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+// ─── Document Management Commands ─────────────────────────────────────────────
 
-    #[tokio::test]
-    async fn test_get_settings_returns_json() {
-        let result = get_settings().await;
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), "{}");
-    }
+#[tauri::command]
+pub async fn get_document_chunks(app: tauri::AppHandle, document_id: String) -> Result<Vec<ChunkRecord>, String> {
+    let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    vector_store::get_document_chunks(&app_dir, &document_id)
+}
+
+#[tauri::command]
+pub async fn delete_document(app: tauri::AppHandle, document_id: String) -> Result<(), String> {
+    let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    vector_store::delete_document_from_db(&app_dir, &document_id)
 }

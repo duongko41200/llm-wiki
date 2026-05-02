@@ -1,65 +1,66 @@
-import { useState } from 'react';
+import { useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import Database from '@tauri-apps/plugin-sql';
+import { useAppStore } from '../stores/appStore';
 
-export interface IngestResult {
-  document_id: string;
+interface IngestProgressPayload {
   status: string;
-  wiki_source_path: string | null;
-  error_message: string | null;
+  percent: number;
 }
 
 export const useIngest = () => {
-  const [isIngesting, setIsIngesting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<IngestResult | null>(null);
+  const {
+    ingestStatus, ingestError, ingestResult, ingestProgress,
+    setIngestStatus, setIngestError, setIngestResult, setIngestProgress,
+  } = useAppStore();
 
-  const startIngest = async (documentId: string, rawPath: string) => {
-    setIsIngesting(true);
-    setError(null);
-    setResult(null);
+  const startIngest = useCallback(async (documentId: string, rawPath: string) => {
+    setIngestStatus('ingesting');
+    setIngestError(null);
+    setIngestResult(null);
+    setIngestProgress(null);
+
+    // Set up progress listener for model pulling if needed
+    const unlistenProgress = await listen<IngestProgressPayload>('ingest_progress', (event) => {
+      const { status, percent } = event.payload;
+      setIngestProgress({ current: percent, total: 100, status });
+    });
 
     try {
-      console.log(`Starting ingest for ${documentId} with path ${rawPath}`);
-      const res = await invoke<IngestResult>('ingest_document', {
+      const res = await invoke<typeof ingestResult>('ingest_document', {
         documentId,
         rawPath,
       });
-      
-      console.log('Ingest result:', res);
-      setResult(res);
 
-      // Update the DB if successful
-      if (res.status === 'ready') {
+      setIngestResult(res);
+      setIngestStatus('done');
+
+      // Update DB record
+      if (res?.status === 'ready') {
         try {
           const db = await Database.load('sqlite:knowledge_forge.db');
           await db.execute(
-            `UPDATE documents SET status = $1, wiki_source_path = $2, updated_at = datetime('now') WHERE id = $3`,
-            ['ready', res.wiki_source_path, documentId]
+            `UPDATE documents SET status = $1, updated_at = datetime('now') WHERE id = $2`,
+            ['ready', documentId]
           );
-          console.log('Database updated successfully for document:', documentId);
-        } catch (dbError) {
-          console.error('Failed to update DB:', dbError);
+        } catch (dbErr) {
+          console.error('DB update error:', dbErr);
         }
       }
-
       return res;
     } catch (err: any) {
-      console.error('Ingest error:', err);
-
-      // Provide user-friendly error messages
-      const errStr = err.toString();
-      let friendlyError = errStr;
-
-      if (errStr.includes('10061') || errStr.includes('refused') || errStr.includes('connect')) {
-        friendlyError = 'Ollama chưa chạy! Hãy mở terminal và chạy lệnh: ollama serve — sau đó thử lại.';
-      } else if (errStr.includes('Ollama API returned status')) {
-        friendlyError = 'Ollama báo lỗi. Kiểm tra model đã được pull chưa: ollama pull qwen2.5:3b';
-      } else if (errStr.includes('parse JSON')) {
-        friendlyError = 'Model AI trả về định dạng không đúng. Thử lại lần nữa.';
+      const errStr = err?.toString() ?? 'Unknown error';
+      let friendly = errStr;
+      if (errStr.includes('10061') || errStr.includes('refused') || errStr.includes('chưa chạy')) {
+        friendly = '❌ Ollama chưa chạy! Mở terminal và chạy: ollama serve';
+      } else if (errStr.includes('timed out') || errStr.includes('timeout')) {
+        friendly = '⏱ Lỗi mạng khi nhúng dữ liệu.';
+      } else if (errStr.includes('PDF')) {
+        friendly = '📄 Không đọc được PDF. Hãy convert sang .txt hoặc .md trước.';
       }
-
-      setError(friendlyError);
+      setIngestError(friendly);
+      setIngestStatus('error');
 
       try {
         const db = await Database.load('sqlite:knowledge_forge.db');
@@ -67,20 +68,12 @@ export const useIngest = () => {
           `UPDATE documents SET status = $1, error_message = $2, updated_at = datetime('now') WHERE id = $3`,
           ['error', errStr, documentId]
         );
-      } catch (dbError) {
-        console.error('Failed to update DB with error state:', dbError);
-      }
-
-      throw new Error(friendlyError);
+      } catch (_) {}
     } finally {
-      setIsIngesting(false);
+      unlistenProgress();
+      setIngestProgress(null);
     }
-  };
+  }, [setIngestStatus, setIngestError, setIngestResult, setIngestProgress]);
 
-  return {
-    startIngest,
-    isIngesting,
-    error,
-    result,
-  };
+  return { startIngest, ingestStatus, ingestError, ingestResult, ingestProgress };
 };

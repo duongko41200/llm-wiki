@@ -23,6 +23,7 @@ tauri-plugin-updater = "2.10.1"
 tauri-plugin-dialog = "2.7.0"
 docx-rs = "0.4.20"
 zip = "8.6.0"
+rusqlite = { version = "0.31.0", features = ["bundled"] }
 
 [features]
 default = [ "custom-protocol" ]
