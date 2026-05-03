@@ -20,6 +20,73 @@ export interface DocumentRecord {
   created_at: string;
 }
 
+export interface ErrorNote {
+  id: number;
+  category: string;
+  title: string;
+  description: string;
+  source: string | null;
+  repeat_count: number;
+  is_resolved: boolean;
+  position_x: number;
+  position_y: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StudyTask {
+  id: number;
+  scheduled_date: string;
+  task_type: string;
+  task_title: string;
+  task_description: string | null;
+  duration_minutes: number;
+  is_completed: boolean;
+  completed_at: string | null;
+  created_at: string;
+}
+
+export interface ScheduleStats {
+  current_streak: number;
+  today_completed: number;
+  today_total: number;
+}
+
+export interface WritingErrorDetail {
+  error_type: string;
+  original_text: string;
+  corrected_text: string;
+  explanation: string;
+}
+
+export interface WritingResult {
+  task_response_score: number;
+  grammar_score: number;
+  vocabulary_score: number;
+  coherence_score: number;
+  overall_band: string;
+  overall_feedback: string;
+  errors: WritingErrorDetail[];
+  sample_essay: string | null;
+}
+
+export interface SpeakingQuestion {
+  part: number;
+  scenario: string;
+  questions: string[];
+}
+
+export interface SpeakingResult {
+  grammar_score: number;
+  vocabulary_score: number;
+  pronunciation_score: number;
+  fluency_score: number;
+  overall_band: string;
+  overall_feedback: string;
+  errors: WritingErrorDetail[];
+  improved_answer: string | null;
+}
+
 export interface ChunkRecord {
   id: number;
   document_id: string;
@@ -80,6 +147,15 @@ interface AppState {
   documents: DocumentRecord[];
   documentsLoading: boolean;
 
+  // ── Error Notes ─────────────────────────────────────────────────────────
+  errorNotes: ErrorNote[];
+  errorNotesLoading: boolean;
+
+  // ── Study Schedule ───────────────────────────────────────────────────────
+  studyTasks: StudyTask[];
+  scheduleStats: ScheduleStats | null;
+  hasSeenSchedulePopup: boolean;
+
   // ── Chat ─────────────────────────────────────────────────────────────────
   chatMessages: ChatMessage[];
   chatMode: ChatMode;
@@ -87,6 +163,15 @@ interface AppState {
   streamingContent: string;
   selectedContextIds: string[];
   useRag: boolean;
+
+  // ── Writing Coach ────────────────────────────────────────────────────────
+  writingResult: WritingResult | null;
+  writingLoading: boolean;
+
+  // ── Speaking Partner ──────────────────────────────────────────────────────
+  speakingQuestion: SpeakingQuestion | null;
+  speakingResult: SpeakingResult | null;
+  speakingLoading: boolean;
 
   // ── LLM Provider (persisted) ──────────────────────────────────────────────
   llmConfig: LlmConfig;
@@ -102,6 +187,21 @@ interface AppState {
   setDocumentsLoading: (v: boolean) => void;
   resetUpload: () => void;
 
+  // ── Actions: Error Notes ──────────────────────────────────────────────────
+  setErrorNotes: (notes: ErrorNote[]) => void;
+  setErrorNotesLoading: (v: boolean) => void;
+  addErrorNote: (note: ErrorNote) => void;
+  updateNotePosition: (id: number, x: number, y: number) => void;
+  updateNoteResolved: (id: number, is_resolved: boolean) => void;
+  incrementNoteRepeat: (id: number) => void;
+  removeErrorNote: (id: number) => void;
+
+  // ── Actions: Study Schedule ───────────────────────────────────────────────
+  setStudyTasks: (tasks: StudyTask[]) => void;
+  setScheduleStats: (stats: ScheduleStats) => void;
+  markTaskCompleted: (id: number) => void;
+  setHasSeenSchedulePopup: (v: boolean) => void;
+
   // ── Actions: Chat ─────────────────────────────────────────────────────────
   addChatMessage: (msg: ChatMessage) => void;
   appendStreamChunk: (chunk: string) => void;
@@ -111,6 +211,15 @@ interface AppState {
   setSelectedContextIds: (ids: string[]) => void;
   setUseRag: (v: boolean) => void;
   clearChat: () => void;
+
+  // ── Actions: Writing Coach ───────────────────────────────────────────────
+  setWritingResult: (result: WritingResult | null) => void;
+  setWritingLoading: (v: boolean) => void;
+
+  // ── Actions: Speaking Partner ────────────────────────────────────────────
+  setSpeakingQuestion: (q: SpeakingQuestion | null) => void;
+  setSpeakingResult: (result: SpeakingResult | null) => void;
+  setSpeakingLoading: (v: boolean) => void;
 
   // ── Actions: LLM Config ────────────────────────────────────────────────────
   setLlmConfig: (config: Partial<LlmConfig>) => void;
@@ -133,6 +242,15 @@ export const useAppStore = create<AppState>()(
       documents: [],
       documentsLoading: false,
 
+      // Error notes defaults
+      errorNotes: [],
+      errorNotesLoading: false,
+
+      // Study schedule defaults
+      studyTasks: [],
+      scheduleStats: null,
+      hasSeenSchedulePopup: false,
+
       // Chat defaults
       chatMessages: [],
       chatMode: 'general',
@@ -140,6 +258,15 @@ export const useAppStore = create<AppState>()(
       streamingContent: '',
       selectedContextIds: [],
       useRag: true,
+
+      // Writing Coach defaults
+      writingResult: null,
+      writingLoading: false,
+
+      // Speaking Partner defaults
+      speakingQuestion: null,
+      speakingResult: null,
+      speakingLoading: false,
 
       // LLM Provider defaults
       llmConfig: {
@@ -166,6 +293,31 @@ export const useAppStore = create<AppState>()(
         parseResult: null,
         ingestStatus: 'idle', ingestError: null, ingestResult: null, ingestProgress: null,
       }),
+
+      // ── Error notes actions ──────────────────────────────────────────────
+      setErrorNotes: (notes) => set({ errorNotes: notes }),
+      setErrorNotesLoading: (v) => set({ errorNotesLoading: v }),
+      addErrorNote: (note) => set((s) => ({ errorNotes: [note, ...s.errorNotes] })),
+      updateNotePosition: (id, x, y) => set((s) => ({
+        errorNotes: s.errorNotes.map(n => n.id === id ? { ...n, position_x: x, position_y: y } : n)
+      })),
+      updateNoteResolved: (id, is_resolved) => set((s) => ({
+        errorNotes: s.errorNotes.map(n => n.id === id ? { ...n, is_resolved } : n)
+      })),
+      incrementNoteRepeat: (id) => set((s) => ({
+        errorNotes: s.errorNotes.map(n => n.id === id ? { ...n, repeat_count: n.repeat_count + 1 } : n)
+      })),
+      removeErrorNote: (id) => set((s) => ({
+        errorNotes: s.errorNotes.filter(n => n.id !== id)
+      })),
+
+      // ── Study schedule actions ────────────────────────────────────────────
+      setStudyTasks: (tasks) => set({ studyTasks: tasks }),
+      setScheduleStats: (stats) => set({ scheduleStats: stats }),
+      markTaskCompleted: (id) => set((s) => ({
+        studyTasks: s.studyTasks.map(t => t.id === id ? { ...t, is_completed: true, completed_at: new Date().toISOString() } : t)
+      })),
+      setHasSeenSchedulePopup: (v) => set({ hasSeenSchedulePopup: v }),
 
       // ── Chat actions ──────────────────────────────────────────────────────
       addChatMessage: (msg) => set((s) => ({ chatMessages: [...s.chatMessages, msg] })),
@@ -195,6 +347,15 @@ export const useAppStore = create<AppState>()(
       setSelectedContextIds: (ids) => set({ selectedContextIds: ids }),
       setUseRag: (v) => set({ useRag: v }),
       clearChat: () => set({ chatMessages: [], streamingContent: '', chatIsLoading: false }),
+
+      // ── Writing Coach actions ──────────────────────────────────────────────
+      setWritingResult: (result) => set({ writingResult: result }),
+      setWritingLoading: (v) => set({ writingLoading: v }),
+
+      // ── Speaking Partner actions ───────────────────────────────────────────
+      setSpeakingQuestion: (q) => set({ speakingQuestion: q }),
+      setSpeakingResult: (result) => set({ speakingResult: result }),
+      setSpeakingLoading: (v) => set({ speakingLoading: v }),
 
       // ── LLM config actions ────────────────────────────────────────────────
       setLlmConfig: (config) => set((s) => ({

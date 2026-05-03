@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import Database from '@tauri-apps/plugin-sql';
-import { FileText, Trash2, HelpCircle, MessageSquare } from 'lucide-react';
+import { FileText, Trash2, HelpCircle, MessageSquare, FileJson } from 'lucide-react';
 import { useAppStore, DocumentRecord, ChunkRecord } from '../../stores/appStore';
 
 export const DocumentsPanel: React.FC = () => {
@@ -9,6 +9,13 @@ export const DocumentsPanel: React.FC = () => {
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
   const [chunks, setChunks] = useState<ChunkRecord[]>([]);
   const [chunksLoading, setChunksLoading] = useState(false);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryResult, setSummaryResult] = useState<string | null>(null);
+
+  // Context Dictionary State
+  const [dictPopup, setDictPopup] = useState<{ x: number, y: number, word: string, context: string } | null>(null);
+  const [dictLoading, setDictLoading] = useState(false);
+  const [dictResult, setDictResult] = useState<string | null>(null);
 
   const fetchDocuments = async () => {
     try {
@@ -33,6 +40,7 @@ export const DocumentsPanel: React.FC = () => {
     const fetchChunks = async () => {
       if (!selectedDocId) {
         setChunks([]);
+        setSummaryResult(null);
         return;
       }
       try {
@@ -62,10 +70,109 @@ export const DocumentsPanel: React.FC = () => {
     }
   };
 
+  const handleSummarize = async () => {
+    if (!selectedDocId) return;
+    setSummaryLoading(true);
+    setSummaryResult(null);
+    try {
+      const res = await invoke<string>('summarize_document', {
+        documentId: selectedDocId,
+        llmConfig: useAppStore.getState().llmConfig
+      });
+      setSummaryResult(res);
+    } catch (err) {
+      alert('Lỗi khi tóm tắt: ' + err);
+    } finally {
+      setSummaryLoading(false);
+    }
+  };
+
   const selectedDoc = documents.find(d => d.id === selectedDocId);
 
+  const handleTextSelection = (chunkContent: string) => {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed) {
+      setDictPopup(null);
+      return;
+    }
+    const text = selection.toString().trim();
+    if (text.length > 0 && text.length < 50) {
+      const range = selection.getRangeAt(0);
+      const rect = range.getBoundingClientRect();
+      setDictPopup({
+        x: rect.left + window.scrollX + rect.width / 2,
+        y: rect.bottom + window.scrollY + 10,
+        word: text,
+        context: chunkContent
+      });
+      setDictResult(null);
+    } else {
+      setDictPopup(null);
+    }
+  };
+
+  const handleExplain = async () => {
+    if (!dictPopup) return;
+    setDictLoading(true);
+    try {
+      const res = await invoke<string>('explain_in_context', {
+        word: dictPopup.word,
+        sentence: dictPopup.context,
+        llmConfig: useAppStore.getState().llmConfig
+      });
+      setDictResult(res);
+    } catch (err) {
+      alert('Lỗi tra từ: ' + err);
+    } finally {
+      setDictLoading(false);
+    }
+  };
+
   return (
-    <div style={{ display: 'flex', height: '100%', gap: '1rem' }}>
+    <div style={{ display: 'flex', height: '100%', gap: '1rem', position: 'relative' }}>
+      
+      {/* Context Dictionary Popup */}
+      {dictPopup && (
+        <div style={{
+          position: 'absolute',
+          left: dictPopup.x,
+          top: dictPopup.y,
+          transform: 'translateX(-50%)',
+          backgroundColor: 'var(--bg-card)',
+          border: '1px solid var(--border-color)',
+          borderRadius: '8px',
+          padding: '1rem',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+          zIndex: 1000,
+          width: '300px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.5rem'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <strong style={{ color: '#3b82f6' }}>"{dictPopup.word}"</strong>
+            <button onClick={() => setDictPopup(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>✕</button>
+          </div>
+          
+          {!dictResult && !dictLoading && (
+            <button 
+              onClick={handleExplain}
+              style={{ padding: '0.5rem', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+            >
+              Giải nghĩa trong ngữ cảnh
+            </button>
+          )}
+
+          {dictLoading && <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Đang tra cứu AI...</span>}
+          
+          {dictResult && (
+            <div style={{ fontSize: '0.85rem', lineHeight: 1.5, maxHeight: '200px', overflowY: 'auto', whiteSpace: 'pre-wrap' }}>
+              {dictResult}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Left panel: List of documents */}
       <div style={{
         flex: '0 0 300px',
@@ -220,6 +327,34 @@ export const DocumentsPanel: React.FC = () => {
                 >
                   <HelpCircle size={16} /> Tạo bài trắc nghiệm
                 </button>
+                <button
+                  onClick={handleSummarize}
+                  disabled={summaryLoading}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '0.5rem',
+                    padding: '0.5rem 1rem',
+                    backgroundColor: summaryLoading ? 'var(--border-color)' : '#f59e0b', color: '#fff',
+                    border: 'none', borderRadius: '6px', cursor: summaryLoading ? 'not-allowed' : 'pointer',
+                    fontWeight: 500
+                  }}
+                >
+                  <FileJson size={16} /> {summaryLoading ? 'Đang tóm tắt...' : 'Tóm tắt AI'}
+                </button>
+              </div>
+            )}
+
+            {summaryResult && (
+              <div style={{
+                backgroundColor: 'rgba(245, 158, 11, 0.05)',
+                border: '1px solid rgba(245, 158, 11, 0.2)',
+                borderRadius: '8px',
+                padding: '1.5rem',
+                marginTop: '1rem'
+              }}>
+                <h3 style={{ margin: '0 0 1rem 0', color: '#f59e0b', fontSize: '1.1rem' }}>Bản tóm tắt AI</h3>
+                <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6, fontSize: '0.95rem' }}>
+                  {summaryResult}
+                </div>
               </div>
             )}
 
@@ -233,14 +368,18 @@ export const DocumentsPanel: React.FC = () => {
               ) : chunks.length > 0 ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                   {chunks.map(chunk => (
-                    <div key={chunk.id} style={{
-                      padding: '1rem',
-                      backgroundColor: 'rgba(255,255,255,0.03)',
-                      borderRadius: '6px',
-                      border: '1px solid var(--border-color)',
-                      fontSize: '0.9rem',
-                      lineHeight: 1.6
-                    }}>
+                    <div 
+                      key={chunk.id} 
+                      onMouseUp={() => handleTextSelection(chunk.content)}
+                      style={{
+                        padding: '1rem',
+                        backgroundColor: 'rgba(255,255,255,0.03)',
+                        borderRadius: '6px',
+                        border: '1px solid var(--border-color)',
+                        fontSize: '0.9rem',
+                        lineHeight: 1.6
+                      }}
+                    >
                       <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem', fontWeight: 600 }}>
                         Chunk #{chunk.chunk_index} ({chunk.word_count} từ)
                       </div>

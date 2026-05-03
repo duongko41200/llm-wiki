@@ -1,7 +1,8 @@
 use tauri::Manager;
 use reqwest::Client;
-use crate::services::{ingest_engine, chat_engine, vector_store, web_scraper};
-use crate::models::{ChunkRecord, LlmConfig, ChatHistoryMessage, IngestResult};
+use crate::services::{ingest_engine, chat_engine, vector_store, web_scraper, error_notes, study_schedule, writing_coach, speaking_partner, document_tools, voice_journal};
+use crate::models::{ChunkRecord, LlmConfig, ChatHistoryMessage, IngestResult, ErrorNote, StudyTask, ScheduleStats, WritingResult, SpeakingResult, SpeakingQuestion};
+use crate::services::voice_journal::VoiceJournalEntry;
 
 // ─── Ollama Status ─────────────────────────────────────────────────────────────
 
@@ -268,3 +269,172 @@ pub async fn delete_document(
     let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     vector_store::delete_document_from_db(&app_dir, &document_id)
 }
+
+// ─── Error Notes ───────────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn get_error_notes(app: tauri::AppHandle) -> Result<Vec<ErrorNote>, String> {
+    let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    error_notes::get_all_notes(&app_dir)
+}
+
+#[tauri::command]
+pub async fn create_error_note(
+    app: tauri::AppHandle,
+    category: String,
+    title: String,
+    description: String,
+    source: Option<String>,
+) -> Result<ErrorNote, String> {
+    let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    error_notes::create_note(&app_dir, category, title, description, source)
+}
+
+#[tauri::command]
+pub async fn update_note_position(
+    app: tauri::AppHandle,
+    id: i64,
+    x: f64,
+    y: f64,
+) -> Result<(), String> {
+    let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    error_notes::update_note_position(&app_dir, id, x, y)
+}
+
+#[tauri::command]
+pub async fn toggle_note_resolved(
+    app: tauri::AppHandle,
+    id: i64,
+    is_resolved: bool,
+) -> Result<(), String> {
+    let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    error_notes::toggle_note_resolved(&app_dir, id, is_resolved)
+}
+
+#[tauri::command]
+pub async fn increment_note_repeat(app: tauri::AppHandle, id: i64) -> Result<(), String> {
+    let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    error_notes::increment_note_repeat(&app_dir, id)
+}
+
+#[tauri::command]
+pub async fn delete_error_note(app: tauri::AppHandle, id: i64) -> Result<(), String> {
+    let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    error_notes::delete_note(&app_dir, id)
+}
+
+// ─── Study Schedule ────────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn generate_study_schedule(app: tauri::AppHandle, llm_config: LlmConfig) -> Result<Vec<StudyTask>, String> {
+    let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    study_schedule::generate_daily_schedule(&app_dir, llm_config).await
+}
+
+#[tauri::command]
+pub async fn get_today_schedule(app: tauri::AppHandle) -> Result<Vec<StudyTask>, String> {
+    let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    study_schedule::get_today_schedule(&app_dir)
+}
+
+#[tauri::command]
+pub async fn complete_study_task(app: tauri::AppHandle, id: i64) -> Result<(), String> {
+    let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    study_schedule::complete_task(&app_dir, id)
+}
+
+#[tauri::command]
+pub async fn get_schedule_stats(app: tauri::AppHandle) -> Result<ScheduleStats, String> {
+    let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    study_schedule::get_schedule_stats(&app_dir)
+}
+
+// ─── Writing Coach ────────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn grade_writing(
+    app: tauri::AppHandle,
+    user_text: String,
+    prompt_topic: String,
+    llm_config: LlmConfig,
+) -> Result<WritingResult, String> {
+    let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    writing_coach::grade_writing(&app_dir, &user_text, &prompt_topic, llm_config).await
+}
+
+// ─── Speaking Partner ─────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn generate_speaking_question(
+    part_number: u8,
+    llm_config: LlmConfig,
+) -> Result<SpeakingQuestion, String> {
+    speaking_partner::generate_speaking_question(part_number, llm_config).await
+}
+
+#[tauri::command]
+pub async fn grade_speaking(
+    app: tauri::AppHandle,
+    transcript: String,
+    question: String,
+    llm_config: LlmConfig,
+) -> Result<SpeakingResult, String> {
+    let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    speaking_partner::grade_speaking(&app_dir, &transcript, &question, llm_config).await
+}
+
+// ─── Document Tools (Phase 4) ────────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn summarize_document(
+    app: tauri::AppHandle,
+    document_id: String,
+    llm_config: LlmConfig,
+) -> Result<String, String> {
+    let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    document_tools::summarize_document(&app_dir, &document_id, llm_config).await
+}
+
+#[tauri::command]
+pub async fn explain_in_context(
+    word: String,
+    sentence: String,
+    llm_config: LlmConfig,
+) -> Result<String, String> {
+    document_tools::explain_in_context(&word, &sentence, llm_config).await
+}
+
+#[tauri::command]
+pub async fn generate_reading_quiz(
+    text: String,
+    llm_config: LlmConfig,
+) -> Result<String, String> {
+    document_tools::generate_reading_quiz(&text, llm_config).await
+}
+
+#[tauri::command]
+pub async fn grade_shadowing(
+    transcript: String,
+    original_text: String,
+    llm_config: LlmConfig,
+) -> Result<String, String> {
+    speaking_partner::grade_shadowing(&transcript, &original_text, llm_config).await
+}
+
+#[tauri::command]
+pub async fn save_journal_entry(
+    app: tauri::AppHandle,
+    date: String,
+    transcript: String,
+    llm_config: LlmConfig,
+) -> Result<VoiceJournalEntry, String> {
+    let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    voice_journal::save_journal_entry(&app_dir, &date, &transcript, llm_config).await
+}
+
+#[tauri::command]
+pub fn get_journal_entries(app: tauri::AppHandle) -> Result<Vec<VoiceJournalEntry>, String> {
+    let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    voice_journal::get_journal_entries(&app_dir)
+}
+

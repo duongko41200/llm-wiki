@@ -180,3 +180,98 @@ pub struct QuizResponse {
     pub title: String,
     pub questions: Vec<QuizQuestion>,
 }
+
+// ─── Error Notes ──────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ErrorNote {
+    pub id: i64,
+    pub category: String,
+    pub title: String,
+    pub description: String,
+    pub source: Option<String>,
+    pub repeat_count: i64,
+    pub is_resolved: bool,
+    pub position_x: f64,
+    pub position_y: f64,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+// ─── Study Schedule ───────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct StudyTask {
+    pub id: i64,
+    pub scheduled_date: String,
+    pub task_type: String,
+    pub task_title: String,
+    pub task_description: Option<String>,
+    pub duration_minutes: i64,
+    pub is_completed: bool,
+    pub completed_at: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ScheduleStats {
+    pub current_streak: i64,
+    pub today_completed: usize,
+    pub today_total: usize,
+}
+
+// ─── Writing & Speaking Results ───────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct WritingErrorDetail {
+    pub error_type: String, // grammar, vocabulary, spelling, punctuation
+    pub original_text: String,
+    pub corrected_text: String,
+    pub explanation: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct WritingResult {
+    pub task_response_score: f64,
+    pub grammar_score: f64,
+    pub vocabulary_score: f64,
+    pub coherence_score: f64,
+    pub overall_band: String, // e.g., A2, B1, B2, C1
+    pub overall_feedback: String,
+    pub errors: Vec<WritingErrorDetail>,
+    pub sample_essay: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SkillResult {
+    pub id: i64,
+    pub skill_type: String,
+    pub score_task: Option<f64>,
+    pub score_grammar: Option<f64>,
+    pub score_vocabulary: Option<f64>,
+    pub score_coherence: Option<f64>,
+    pub score_pronunciation: Option<f64>,
+    pub total_score: Option<f64>,
+    pub feedback: String, // JSON serialized
+    pub user_input: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SpeakingQuestion {
+    pub part: u8,
+    pub scenario: String,
+    pub questions: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SpeakingResult {
+    pub grammar_score: f64,
+    pub vocabulary_score: f64,
+    pub pronunciation_score: f64,
+    pub fluency_score: f64,
+    pub overall_band: String,
+    pub overall_feedback: String,
+    pub errors: Vec<WritingErrorDetail>, // Reuse same error struct
+    pub improved_answer: Option<String>,
+}

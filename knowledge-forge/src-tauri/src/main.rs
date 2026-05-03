@@ -47,6 +47,67 @@ fn main() {
                 );
             ",
             kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 2,
+            description: "add_v2_tables",
+            sql: "
+                CREATE TABLE IF NOT EXISTS error_notes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    category TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    description TEXT NOT NULL,
+                    source TEXT,
+                    repeat_count INTEGER DEFAULT 1,
+                    is_resolved INTEGER DEFAULT 0,
+                    position_x REAL DEFAULT 0,
+                    position_y REAL DEFAULT 0,
+                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+                );
+
+                CREATE TABLE IF NOT EXISTS study_schedule (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    scheduled_date TEXT NOT NULL,
+                    task_type TEXT NOT NULL,
+                    task_title TEXT NOT NULL,
+                    task_description TEXT,
+                    duration_minutes INTEGER DEFAULT 15,
+                    is_completed INTEGER DEFAULT 0,
+                    completed_at TEXT,
+                    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+                );
+
+                CREATE TABLE IF NOT EXISTS skill_results (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    skill_type TEXT NOT NULL,
+                    score_task REAL,
+                    score_grammar REAL,
+                    score_vocabulary REAL,
+                    score_coherence REAL,
+                    score_pronunciation REAL,
+                    total_score REAL,
+                    feedback TEXT,
+                    user_input TEXT,
+                    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+                );
+            ",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 3,
+            description: "add_voice_journal",
+            sql: "
+                CREATE TABLE IF NOT EXISTS voice_journal (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    date TEXT NOT NULL,
+                    transcript TEXT NOT NULL,
+                    sentiment TEXT,
+                    feedback TEXT,
+                    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+                );
+            ",
+            kind: MigrationKind::Up,
         }
     ];
 
@@ -67,7 +128,26 @@ fn main() {
             commands::send_chat_message,
             commands::generate_quiz,
             commands::get_document_chunks,
-            commands::delete_document
+            commands::delete_document,
+            commands::get_error_notes,
+            commands::create_error_note,
+            commands::update_note_position,
+            commands::toggle_note_resolved,
+            commands::increment_note_repeat,
+            commands::delete_error_note,
+            commands::generate_study_schedule,
+            commands::get_today_schedule,
+            commands::complete_study_task,
+            commands::get_schedule_stats,
+            commands::grade_writing,
+            commands::generate_speaking_question,
+            commands::grade_speaking,
+            commands::summarize_document,
+            commands::explain_in_context,
+            commands::generate_reading_quiz,
+            commands::grade_shadowing,
+            commands::save_journal_entry,
+            commands::get_journal_entries
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
